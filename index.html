@@ -188,14 +188,23 @@ function resize() {
   const maxW = Math.min(window.innerWidth, 480);
   const hud = document.getElementById('hud');
   const ctrl = document.getElementById('controls');
-  const hudH = hud.offsetHeight;
-  const ctrlH = ctrl.offsetHeight;
-  const availH = window.innerHeight - hudH - ctrlH - 4;
+  const hudH = hud.offsetHeight || 28;
+  const ctrlH = ctrl.offsetHeight || 88;
+  const availH = (window.innerHeight || document.documentElement.clientHeight) - hudH - ctrlH - 4;
   canvas.width = maxW;
   canvas.height = Math.max(availH, 300);
 }
+// Defer first resize until layout is ready
+window.addEventListener('load', resize);
 resize();
-window.addEventListener('resize', () => { resize(); initGame(); });
+window.addEventListener('resize', () => {
+  resize();
+  // Don't reset during gameplay, just reposition player within new bounds
+  if (state === 'playing' && player) {
+    player.x = Math.min(player.x, canvas.width - player.w);
+    player.y = canvas.height - PLAYER_H - 16;
+  }
+});
 
 // --- Constants ---
 const ROWS = 5, COLS = 10;
@@ -406,11 +415,12 @@ function drawGroundLine() {
 
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (state !== 'playing') return;
   drawGroundLine();
   drawBarriers();
   drawInvaders();
   drawUFO();
-  drawPlayer();
+  if (player) drawPlayer();
   drawBullets();
   drawBombs();
   drawParticles();
@@ -636,10 +646,21 @@ function gameOver() {
 }
 
 // --- Main loop ---
+let rafId = null;
 function loop(ts) {
-  update(ts);
-  render();
-  requestAnimationFrame(loop);
+  try {
+    update(ts);
+    render();
+  } catch(e) {
+    console.error('Game error:', e);
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+function startLoop() {
+  if (rafId) cancelAnimationFrame(rafId);
+  lastTime = performance.now();
+  rafId = requestAnimationFrame(loop);
 }
 
 // --- Controls ---
@@ -680,13 +701,14 @@ document.querySelectorAll('.diff-btn').forEach(btn => {
 
 document.getElementById('start-btn').addEventListener('click', () => {
   document.getElementById('overlay').style.display = 'none';
+  resize();
   initGame();
   state = 'playing';
-  lastTime = performance.now();
+  startLoop();
 });
 
 // --- Boot ---
-requestAnimationFrame(loop);
+startLoop();
 </script>
 </body>
 </html>
